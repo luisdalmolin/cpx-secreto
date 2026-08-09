@@ -1,6 +1,6 @@
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
-import { CalendarPlus, Plus, Users } from "lucide-react-native";
+import { CalendarPlus, Pencil, Plus, Users } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Share, View } from "react-native";
@@ -21,7 +21,7 @@ import type {
 } from "@/api/generated/models";
 import { AppScreen } from "@/components/common/app-screen";
 import { ScreenState } from "@/components/common/screen-state";
-import { Badge, Button, Card, Text } from "@/components/ui";
+import { Badge, Button, Card, IconButton, Text } from "@/components/ui";
 import {
   apiErrorMessage,
   formatCurrency,
@@ -149,6 +149,21 @@ export default function GroupDetailScreen() {
       title={group.name}
       subtitle={t("groups.detailSubtitle")}
       back
+      action={
+        isAdmin ? (
+          <IconButton
+            accessibilityLabel={t("groups.edit")}
+            onPress={() =>
+              router.push({
+                pathname: "/groups/[groupId]/edit",
+                params: { groupId: String(group.id) },
+              })
+            }
+          >
+            <Pencil color={palette.mintDeep} size={20} />
+          </IconButton>
+        ) : undefined
+      }
       refreshing={resource.isRefreshing}
       onRefresh={resource.refresh}
     >
@@ -181,8 +196,18 @@ export default function GroupDetailScreen() {
             <MemberSummary
               key={member.id}
               member={member}
+              canEdit={isAdmin}
               canManage={isAdmin && member.userId !== user?.id}
               busy={mutationId === member.id}
+              onEdit={() =>
+                router.push({
+                  pathname: "/groups/[groupId]/members/[memberId]/edit",
+                  params: {
+                    groupId: String(group.id),
+                    memberId: String(member.id),
+                  },
+                })
+              }
               onChangeStatus={() => void changeMemberStatus(member)}
               onIssueInvitation={() => void issueInvitation(member)}
             />
@@ -251,14 +276,18 @@ export default function GroupDetailScreen() {
 
 function MemberSummary({
   member,
+  canEdit,
   canManage,
   busy,
+  onEdit,
   onChangeStatus,
   onIssueInvitation,
 }: {
   member: GroupMember;
+  canEdit: boolean;
   canManage: boolean;
   busy: boolean;
+  onEdit: () => void;
   onChangeStatus: () => void;
   onIssueInvitation: () => void;
 }) {
@@ -276,8 +305,17 @@ function MemberSummary({
           {t(`groups.${member.role}`)} · {t(`groups.status.${member.status}`)}
         </Text>
       </View>
-      {canManage ? (
+      {canEdit || canManage ? (
         <View className="items-end gap-2">
+          {canEdit ? (
+            <Button
+              size="sm"
+              label={t("common.edit")}
+              variant="light"
+              disabled={busy}
+              onPress={onEdit}
+            />
+          ) : null}
           {member.status !== "active" ? (
             <Button
               size="sm"

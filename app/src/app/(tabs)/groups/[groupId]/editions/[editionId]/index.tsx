@@ -7,6 +7,7 @@ import {
   Heart,
   List,
   MessageCircle,
+  Pencil,
   Shuffle,
   Users,
 } from "lucide-react-native";
@@ -27,7 +28,7 @@ import { listGroupMembers } from "@/api/generated/group-members/group-members";
 import type { Edition } from "@/api/generated/models";
 import { AppScreen } from "@/components/common/app-screen";
 import { ScreenState } from "@/components/common/screen-state";
-import { Badge, Button, Card, Text } from "@/components/ui";
+import { Badge, Button, Card, IconButton, Text } from "@/components/ui";
 import {
   apiErrorMessage,
   formatCurrency,
@@ -138,6 +139,7 @@ export default function EditionDetailScreen() {
     editionId: String(editionId),
   };
   const canEditRoster = edition.status === "draft" || edition.status === "open";
+  const canEditEdition = canEditRoster && isAdmin;
   return (
     <AppScreen
       title={edition.name}
@@ -145,6 +147,21 @@ export default function EditionDetailScreen() {
         value: t(`editions.status.${edition.status}`),
       })}
       back
+      action={
+        canEditEdition ? (
+          <IconButton
+            accessibilityLabel={t("editions.edit")}
+            onPress={() =>
+              router.push({
+                pathname: "/groups/[groupId]/editions/[editionId]/edit",
+                params: routeParams,
+              })
+            }
+          >
+            <Pencil color={palette.mintDeep} size={20} />
+          </IconButton>
+        ) : undefined
+      }
       refreshing={resource.isRefreshing}
       onRefresh={resource.refresh}
     >
