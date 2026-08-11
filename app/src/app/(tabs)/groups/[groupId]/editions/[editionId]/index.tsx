@@ -11,7 +11,7 @@ import {
   Shuffle,
   Users,
 } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, View } from "react-native";
 
@@ -48,24 +48,21 @@ export default function EditionDetailScreen() {
   const [mutationError, setMutationError] = useState<unknown>();
   const [mutating, setMutating] = useState(false);
   const mounted = useMountedRef();
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
-      const [group, edition, participants, members] = await Promise.all([
-        getGroup(groupId, { signal }),
-        getEdition(groupId, editionId, { signal }),
-        listEditionParticipants(groupId, editionId, { signal }),
-        listGroupMembers(groupId, { signal }),
-      ]);
-      return {
-        group,
-        edition,
-        participants,
-        members: members.data,
-      };
-    },
-    [editionId, groupId, t],
-  );
+  const load = async (signal: AbortSignal) => {
+    if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
+    const [group, edition, participants, members] = await Promise.all([
+      getGroup(groupId, { signal }),
+      getEdition(groupId, editionId, { signal }),
+      listEditionParticipants(groupId, editionId, { signal }),
+      listGroupMembers(groupId, { signal }),
+    ]);
+    return {
+      group,
+      edition,
+      participants,
+      members: members.data,
+    };
+  };
   const resource = useFocusResource(load);
   const isAdmin = Boolean(
     resource.data &&

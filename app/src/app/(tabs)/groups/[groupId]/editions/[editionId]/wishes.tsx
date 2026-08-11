@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from "expo-router";
 import { Archive, ExternalLink, Plus, Search, X } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Alert, View } from "react-native";
 
@@ -59,17 +59,14 @@ export default function WishesScreen() {
   const [mutationError, setMutationError] = useState<unknown>();
   const [localFieldError, setLocalFieldError] = useState<string>();
   const mounted = useMountedRef();
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
-      const [edition, wishes] = await Promise.all([
-        getEdition(groupId, editionId, { signal }),
-        getMyWishes(groupId, editionId, { signal }),
-      ]);
-      return { edition, wishes: wishes.data };
-    },
-    [editionId, groupId, t],
-  );
+  const load = async (signal: AbortSignal) => {
+    if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
+    const [edition, wishes] = await Promise.all([
+      getEdition(groupId, editionId, { signal }),
+      getMyWishes(groupId, editionId, { signal }),
+    ]);
+    return { edition, wishes: wishes.data };
+  };
   const resource = useFocusResource(load);
   const fieldError =
     localFieldError ?? normalizeApiError(mutationError).fields?.description;

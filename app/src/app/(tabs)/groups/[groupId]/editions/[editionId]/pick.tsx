@@ -7,7 +7,7 @@ import {
   RefreshCw,
   RotateCcw,
 } from "lucide-react-native";
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Alert, AppState, View } from "react-native";
 
@@ -47,22 +47,19 @@ export default function PickPurchaseScreen() {
   const [mutationError, setMutationError] = useState<unknown>();
   const [checkoutUrlError, setCheckoutUrlError] = useState(false);
   const mounted = useMountedRef();
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
-      const [edition, participants, orders] = await Promise.all([
-        getEdition(groupId, editionId, { signal }),
-        listEditionParticipants(groupId, editionId, { signal }),
-        listOrders({ "filter[edition_id]": editionId }, { signal }),
-      ]);
-      const order = orders.data.find(
-        (item) => item.editionId === editionId && item.type === "pick_purchase",
-      );
+  const load = async (signal: AbortSignal) => {
+    if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
+    const [edition, participants, orders] = await Promise.all([
+      getEdition(groupId, editionId, { signal }),
+      listEditionParticipants(groupId, editionId, { signal }),
+      listOrders({ "filter[edition_id]": editionId }, { signal }),
+    ]);
+    const order = orders.data.find(
+      (item) => item.editionId === editionId && item.type === "pick_purchase",
+    );
 
-      return { edition, participants, order };
-    },
-    [editionId, groupId, t],
-  );
+    return { edition, participants, order };
+  };
   const resource = useFocusResource(load);
   const order = resource.data?.order;
   const receiverParticipantId =

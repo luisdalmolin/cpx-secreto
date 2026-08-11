@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ExternalLink, Eye, Gift, Heart } from "lucide-react-native";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, View } from "react-native";
 
@@ -25,19 +25,14 @@ export default function MyAssignmentScreen() {
   const [productLinkError, setProductLinkError] = useState<string>();
   const requestRef = useRef<AbortController | undefined>(undefined);
 
-  useFocusEffect(
-    useCallback(
-      () => () => {
-        requestRef.current?.abort();
-        requestRef.current = undefined;
-        setAssignment(undefined);
-        setError(undefined);
-        setRevealing(false);
-        setProductLinkError(undefined);
-      },
-      [],
-    ),
-  );
+  useFocusEffect(() => () => {
+    requestRef.current?.abort();
+    requestRef.current = undefined;
+    setAssignment(undefined);
+    setError(undefined);
+    setRevealing(false);
+    setProductLinkError(undefined);
+  });
 
   async function reveal(): Promise<void> {
     if (!groupId || !editionId || requestRef.current) return;

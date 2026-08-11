@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, Copy, Plus } from "lucide-react-native";
 import { useLocalSearchParams } from "expo-router";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Alert, View } from "react-native";
 
@@ -55,30 +55,25 @@ export default function DrawConstraintsScreen() {
   const [mutationError, setMutationError] = useState<unknown>();
   const mounted = useMountedRef();
 
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (!groupId || !editionId) {
-        throw new Error(t("common.errors.notFound"));
-      }
+  const load = async (signal: AbortSignal) => {
+    if (!groupId || !editionId) {
+      throw new Error(t("common.errors.notFound"));
+    }
 
-      const [edition, participants, constraints, readiness] = await Promise.all(
-        [
-          getEdition(groupId, editionId, { signal }),
-          listEditionParticipants(groupId, editionId, { signal }),
-          listDrawConstraints(groupId, editionId, { signal }),
-          checkReadiness(groupId, editionId, signal),
-        ],
-      );
+    const [edition, participants, constraints, readiness] = await Promise.all([
+      getEdition(groupId, editionId, { signal }),
+      listEditionParticipants(groupId, editionId, { signal }),
+      listDrawConstraints(groupId, editionId, { signal }),
+      checkReadiness(groupId, editionId, signal),
+    ]);
 
-      return {
-        edition,
-        participants: participants.data,
-        constraints: constraints.data,
-        readiness,
-      };
-    },
-    [editionId, groupId, t],
-  );
+    return {
+      edition,
+      participants: participants.data,
+      constraints: constraints.data,
+      readiness,
+    };
+  };
   const resource = useFocusResource(load);
 
   const isEditable =

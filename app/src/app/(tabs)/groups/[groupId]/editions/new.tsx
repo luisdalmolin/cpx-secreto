@@ -12,6 +12,7 @@ import {
   isValidIsoDate,
   parseBudgetCents,
 } from "@/features/editions/presentation";
+import { withLoading } from "@/features/shared/loading";
 import { apiErrorMessage, parseRouteId } from "@/features/shared/presentation";
 import { palette } from "@/theme/tokens";
 
@@ -37,23 +38,21 @@ export default function NewEditionScreen() {
 
     setEventDateError(undefined);
     setError(undefined);
-    setSubmitting(true);
     try {
-      const edition = await createEdition(groupId, {
-        name: name.trim(),
-        budgetCents: parseBudgetCents(budget),
-        eventDate: normalizedEventDate || null,
-      });
-      setSubmitting(false);
+      const edition = await withLoading(setSubmitting, () =>
+        createEdition(groupId, {
+          name: name.trim(),
+          budgetCents: parseBudgetCents(budget),
+          eventDate: normalizedEventDate || null,
+        }),
+      );
       router.replace({
         pathname: "/groups/[groupId]/editions/[editionId]",
         params: { groupId: String(groupId), editionId: String(edition.id) },
       });
-      return;
     } catch (exception) {
       setError(exception);
     }
-    setSubmitting(false);
   }
 
   return (

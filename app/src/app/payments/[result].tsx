@@ -1,6 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { CheckCircle2, Clock3, RefreshCw, XCircle } from "lucide-react-native";
-import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 
@@ -20,13 +19,10 @@ export default function PaymentReturnScreen() {
     orderId?: string;
   }>();
   const orderId = parseRouteId(params.orderId);
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (!orderId) throw new Error(t("orders.return.invalid"));
-      return pollOrder(orderId, signal);
-    },
-    [orderId, t],
-  );
+  const load = async (signal: AbortSignal) => {
+    if (!orderId) throw new Error(t("orders.return.invalid"));
+    return pollOrder(orderId, signal);
+  };
   const resource = useFocusResource(load);
 
   if (!resource.data) {

@@ -8,6 +8,7 @@ import { normalizeApiError } from "@/api/errors";
 import { AppScreen } from "@/components/common/app-screen";
 import { FormField } from "@/components/common/form-field";
 import { Button, Card, Text } from "@/components/ui";
+import { withLoading } from "@/features/shared/loading";
 import { apiErrorMessage } from "@/features/shared/presentation";
 import { palette } from "@/theme/tokens";
 
@@ -21,22 +22,20 @@ export default function NewGroupScreen() {
 
   async function submit(): Promise<void> {
     setError(undefined);
-    setSubmitting(true);
     try {
-      const group = await createGroup({
-        name: name.trim(),
-        description: description.trim() || null,
-      });
-      setSubmitting(false);
+      const group = await withLoading(setSubmitting, () =>
+        createGroup({
+          name: name.trim(),
+          description: description.trim() || null,
+        }),
+      );
       router.replace({
         pathname: "/groups/[groupId]",
         params: { groupId: String(group.id) },
       });
-      return;
     } catch (exception) {
       setError(exception);
     }
-    setSubmitting(false);
   }
 
   return (

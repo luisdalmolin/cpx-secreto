@@ -8,6 +8,7 @@ import { normalizeApiError } from "@/api/errors";
 import { AppScreen } from "@/components/common/app-screen";
 import { FormField } from "@/components/common/form-field";
 import { Button, Card, Text } from "@/components/ui";
+import { withLoading } from "@/features/shared/loading";
 import { apiErrorMessage } from "@/features/shared/presentation";
 import { i18n } from "@/i18n";
 import { palette } from "@/theme/tokens";
@@ -22,17 +23,15 @@ export default function EditProfileScreen() {
 
   async function save(): Promise<void> {
     setError(undefined);
-    setSaving(true);
     try {
-      await updateProfile({ name: name.trim(), locale: "pt-BR" });
-      await i18n.changeLanguage("pt-BR");
-      setSaving(false);
+      await withLoading(setSaving, async () => {
+        await updateProfile({ name: name.trim(), locale: "pt-BR" });
+        await i18n.changeLanguage("pt-BR");
+      });
       router.back();
-      return;
     } catch (exception) {
       setError(exception);
     }
-    setSaving(false);
   }
 
   return (

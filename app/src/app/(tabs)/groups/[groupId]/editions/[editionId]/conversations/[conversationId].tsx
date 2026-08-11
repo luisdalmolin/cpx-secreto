@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Send } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -46,30 +46,27 @@ export default function ConversationThreadScreen() {
   const [sendError, setSendError] = useState<unknown>();
   const [sending, setSending] = useState(false);
   const mounted = useMountedRef();
-  const load = useCallback(
-    async (signal: AbortSignal) => {
-      if (!groupId || !editionId || !conversationId) {
-        throw new Error(t("common.errors.notFound"));
-      }
+  const load = async (signal: AbortSignal) => {
+    if (!groupId || !editionId || !conversationId) {
+      throw new Error(t("common.errors.notFound"));
+    }
 
-      const thread = await getConversationMessages(
-        groupId,
-        editionId,
-        conversationId,
-        { signal },
-      );
-      await markConversationRead(
-        groupId,
-        editionId,
-        conversationId,
-        { messageId: thread.messages[thread.messages.length - 1]?.id ?? null },
-        { signal },
-      );
+    const thread = await getConversationMessages(
+      groupId,
+      editionId,
+      conversationId,
+      { signal },
+    );
+    await markConversationRead(
+      groupId,
+      editionId,
+      conversationId,
+      { messageId: thread.messages[thread.messages.length - 1]?.id ?? null },
+      { signal },
+    );
 
-      return thread;
-    },
-    [conversationId, editionId, groupId, t],
-  );
+    return thread;
+  };
   const resource = useFocusResource(load);
 
   useFocusEffect(() => {
