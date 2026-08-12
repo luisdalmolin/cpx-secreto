@@ -1,8 +1,7 @@
-import { AlertCircle, CheckCircle2, Copy, Plus } from "lucide-react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Alert, View } from "react-native";
+import { Alert } from "react-native";
 
 import {
   copyDrawConstraintsFromPreviousEdition,
@@ -13,24 +12,22 @@ import {
 import { preflightDraw } from "@/api/generated/draw/draw";
 import { listEditionParticipants } from "@/api/generated/edition-participants/edition-participants";
 import { getEdition } from "@/api/generated/editions/editions";
-import type {
-  DrawConstraint,
-  DrawPreflight,
-  EditionParticipant,
-} from "@/api/generated/models";
+import type { DrawConstraint } from "@/api/generated/models";
 import { AppScreen } from "@/components/common/app-screen";
 import { ScreenState } from "@/components/common/screen-state";
-import { DrawConstraintCard, ParticipantChoice } from "@/components/draw";
-import { Button, Card, Text } from "@/components/ui";
+import {
+  ConstraintEditor,
+  ConstraintList,
+  type ConstraintMutation,
+  CopyConstraintsCard,
+  LockedConstraintsNotice,
+  ReadinessCard,
+  type ReadinessResult,
+} from "@/components/draw/draw-constraints-content";
+import { Text } from "@/components/ui";
 import { apiErrorMessage, parseRouteId } from "@/features/shared/presentation";
 import { useFocusResource } from "@/hooks/use-focus-resource";
 import { useMountedRef } from "@/hooks/use-mounted-ref";
-import { palette } from "@/theme/tokens";
-
-interface ReadinessResult {
-  preflight?: DrawPreflight;
-  error?: unknown;
-}
 
 async function checkReadiness(
   groupId: number,
@@ -51,7 +48,7 @@ export default function DrawConstraintsScreen() {
   const editionId = parseRouteId(params.editionId);
   const [firstParticipantId, setFirstParticipantId] = useState<number>();
   const [secondParticipantId, setSecondParticipantId] = useState<number>();
-  const [mutation, setMutation] = useState<"creating" | "copying" | number>();
+  const [mutation, setMutation] = useState<ConstraintMutation>();
   const [mutationError, setMutationError] = useState<unknown>();
   const mounted = useMountedRef();
 
@@ -249,123 +246,40 @@ export default function DrawConstraintsScreen() {
       onRefresh={resource.refresh}
     >
       {!isEditable ? (
-        <Card className="gap-2 border border-hairline p-5">
-          <Text variant="cardTitle">{t("draw.constraints.lockedTitle")}</Text>
-          <Text variant="caption">{t("draw.constraints.lockedBody")}</Text>
-        </Card>
+        <LockedConstraintsNotice />
       ) : (
-        <Card className="gap-4 border border-hairline p-5">
-          <View className="gap-1">
-            <Text variant="section">{t("draw.constraints.newTitle")}</Text>
-            <Text variant="caption">{t("draw.constraints.newHint")}</Text>
-          </View>
-
-          <ParticipantSelector
-            label={t("draw.constraints.firstPerson")}
-            participants={participants}
-            selectedId={firstParticipantId}
-            disabled={Boolean(mutation)}
-            participantName={participantName}
-            onSelect={selectFirst}
-          />
-          <ParticipantSelector
-            label={t("draw.constraints.secondPerson")}
-            participants={participants}
-            selectedId={secondParticipantId}
-            disabled={Boolean(mutation)}
-            disabledId={firstParticipantId}
-            participantName={participantName}
-            onSelect={setSecondParticipantId}
-          />
-
-          {selectedPairExists ? (
-            <Text className="text-pink-deep" accessibilityRole="alert">
-              {t("draw.constraints.duplicate")}
-            </Text>
-          ) : null}
-          <Button
-            label={
-              mutation === "creating"
-                ? t("draw.constraints.adding")
-                : t("draw.constraints.add")
-            }
-            leftIcon={
-              mutation === "creating" ? (
-                <ActivityIndicator color={palette.white} />
-              ) : (
-                <Plus color={palette.white} size={18} />
-              )
-            }
-            disabled={
-              Boolean(mutation) ||
-              !firstParticipantId ||
-              !secondParticipantId ||
-              selectedPairExists
-            }
-            onPress={() => void addExclusion()}
-          />
-        </Card>
+        <ConstraintEditor
+          participants={participants}
+          firstParticipantId={firstParticipantId}
+          secondParticipantId={secondParticipantId}
+          selectedPairExists={selectedPairExists}
+          mutation={mutation}
+          participantName={participantName}
+          onSelectFirst={selectFirst}
+          onSelectSecond={setSecondParticipantId}
+          onAdd={() => void addExclusion()}
+        />
       )}
 
       {isEditable ? (
-        <Card className="gap-3 border border-hairline p-5">
-          <View className="gap-1">
-            <Text variant="cardTitle">{t("draw.constraints.copyTitle")}</Text>
-            <Text variant="caption">{t("draw.constraints.copyHint")}</Text>
-          </View>
-          <Button
-            label={
-              mutation === "copying"
-                ? t("draw.constraints.copying")
-                : t("draw.constraints.copy")
-            }
-            variant="light"
-            leftIcon={
-              mutation === "copying" ? (
-                <ActivityIndicator color={palette.mintDeep} />
-              ) : (
-                <Copy color={palette.mintDeep} size={18} />
-              )
-            }
-            disabled={Boolean(mutation)}
-            onPress={() => void copyPreviousExclusions()}
-          />
-        </Card>
+        <CopyConstraintsCard
+          copying={mutation === "copying"}
+          disabled={Boolean(mutation)}
+          onCopy={() => void copyPreviousExclusions()}
+        />
       ) : null}
 
       {isEditable ? (
         <ReadinessCard readiness={resource.data.readiness} />
       ) : null}
 
-      <View className="gap-3">
-        <View className="gap-1">
-          <Text variant="section">{t("draw.constraints.currentTitle")}</Text>
-          <Text variant="caption">
-            {t("draw.constraints.currentCount", { count: exclusions.length })}
-          </Text>
-        </View>
-        {exclusions.length === 0 ? (
-          <ScreenState
-            kind="empty"
-            title={t("draw.constraints.empty")}
-            message={t("draw.constraints.emptyHint")}
-          />
-        ) : (
-          exclusions.map((constraint) => (
-            <DrawConstraintCard
-              key={constraint.id}
-              firstName={participantName(constraint.giverParticipantId)}
-              secondName={participantName(constraint.receiverParticipantId)}
-              removeLabel={t("draw.constraints.removeLabel", {
-                first: participantName(constraint.giverParticipantId),
-                second: participantName(constraint.receiverParticipantId),
-              })}
-              disabled={!isEditable || Boolean(mutation)}
-              onRemove={() => confirmRemoval(constraint)}
-            />
-          ))
-        )}
-      </View>
+      <ConstraintList
+        constraints={exclusions}
+        editable={isEditable}
+        mutation={mutation}
+        participantName={participantName}
+        onRemove={confirmRemoval}
+      />
 
       {mutationError ? (
         <Text className="text-pink-deep" accessibilityRole="alert">
@@ -378,78 +292,5 @@ export default function DrawConstraintsScreen() {
         </Text>
       ) : null}
     </AppScreen>
-  );
-}
-
-function ParticipantSelector({
-  label,
-  participants,
-  selectedId,
-  disabled,
-  disabledId,
-  participantName,
-  onSelect,
-}: {
-  label: string;
-  participants: EditionParticipant[];
-  selectedId?: number;
-  disabled: boolean;
-  disabledId?: number;
-  participantName: (participantId: number) => string;
-  onSelect: (participantId: number) => void;
-}) {
-  return (
-    <View className="gap-2">
-      <Text variant="bodyBold">{label}</Text>
-      <View className="gap-2">
-        {participants.map((participant) => (
-          <ParticipantChoice
-            key={participant.id}
-            label={participantName(participant.id)}
-            selected={selectedId === participant.id}
-            disabled={disabled || disabledId === participant.id}
-            onPress={() => onSelect(participant.id)}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function ReadinessCard({ readiness }: { readiness: ReadinessResult }) {
-  const { t } = useTranslation();
-  const isReady = Boolean(readiness.preflight?.ready);
-
-  return (
-    <Card
-      className={
-        isReady
-          ? "flex-row items-start gap-3 border border-mint p-4"
-          : "flex-row items-start gap-3 border border-pink p-4"
-      }
-      accessibilityLiveRegion="polite"
-    >
-      {isReady ? (
-        <CheckCircle2 color={palette.mint} size={22} />
-      ) : (
-        <AlertCircle color={palette.pink} size={22} />
-      )}
-      <View className="flex-1 gap-1">
-        <Text variant="cardTitle">
-          {t(
-            isReady
-              ? "draw.constraints.readyTitle"
-              : "draw.constraints.blockedTitle",
-          )}
-        </Text>
-        <Text variant="caption">
-          {isReady
-            ? t("draw.constraints.readyBody", {
-                count: readiness.preflight?.participantCount,
-              })
-            : apiErrorMessage(readiness.error, t)}
-        </Text>
-      </View>
-    </Card>
   );
 }
