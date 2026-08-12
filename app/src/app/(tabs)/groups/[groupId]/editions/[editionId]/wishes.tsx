@@ -1,8 +1,8 @@
 import { useLocalSearchParams } from "expo-router";
-import { Archive, ExternalLink, Plus, Search, X } from "lucide-react-native";
-import { useState } from "react";
+import { Archive } from "lucide-react-native";
+import { useReducer } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Alert, View } from "react-native";
+import { Alert, View } from "react-native";
 
 import { normalizeApiError } from "@/api/errors";
 import { getEdition } from "@/api/generated/editions/editions";
@@ -16,200 +16,139 @@ import {
   updateWish,
 } from "@/api/generated/wishes/wishes";
 import { AppScreen } from "@/components/common/app-screen";
-import { FormField } from "@/components/common/form-field";
 import { ScreenState } from "@/components/common/screen-state";
-import { WishListItem } from "@/components/wishes/wish-list-item";
-import { ProductDetails } from "@/components/wishes/product-details";
+import { CreateWishCard } from "@/components/wishes/create-wish-card";
+import { WishListSection } from "@/components/wishes/wish-list-section";
 import { ProductSearchPanel } from "@/components/wishes/product-search-panel";
-import { Button, Card, Text } from "@/components/ui";
+import { Card, Text } from "@/components/ui";
 import { apiErrorMessage, parseRouteId } from "@/features/shared/presentation";
 import { openProduct } from "@/features/products/open-product";
+import {
+  initialWishEditorState,
+  reorderWishList,
+  wishEditorReducer,
+} from "@/features/wishes/editor-state";
 import { useFocusResource } from "@/hooks/use-focus-resource";
 import { useMountedRef } from "@/hooks/use-mounted-ref";
 import { palette } from "@/theme/tokens";
-
-type Mutation =
-  | { type: "create" }
-  | { type: "update"; wishId: number }
-  | { type: "delete"; wishId: number }
-  | { type: "reorder"; wishId: number; offset: -1 | 1 };
-
-type ProductPickerTarget = "create" | number;
 
 export default function WishesScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ groupId: string; editionId: string }>();
   const groupId = parseRouteId(params.groupId);
   const editionId = parseRouteId(params.editionId);
-  const [description, setDescription] = useState("");
-  const [product, setProduct] = useState<Product | null>(null);
-  const [editingId, setEditingId] = useState<number>();
-  const [editingDescription, setEditingDescription] = useState("");
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productPickerTarget, setProductPickerTarget] =
-    useState<ProductPickerTarget>();
-  const [productQuery, setProductQuery] = useState("");
-  const [productResults, setProductResults] = useState<Product[]>([]);
-  const [productSearching, setProductSearching] = useState(false);
-  const [productSearched, setProductSearched] = useState(false);
-  const [productSearchError, setProductSearchError] = useState<unknown>();
-  const [productFieldError, setProductFieldError] = useState<string>();
-  const [productLinkError, setProductLinkError] = useState<string>();
-  const [mutation, setMutation] = useState<Mutation>();
-  const [mutationError, setMutationError] = useState<unknown>();
-  const [localFieldError, setLocalFieldError] = useState<string>();
+  const [state, dispatch] = useReducer(
+    wishEditorReducer,
+    initialWishEditorState,
+  );
   const mounted = useMountedRef();
-  const load = async (signal: AbortSignal) => {
-    if (!groupId || !editionId) throw new Error(t("common.errors.notFound"));
-    const [edition, wishes] = await Promise.all([
-      getEdition(groupId, editionId, { signal }),
-      getMyWishes(groupId, editionId, { signal }),
-    ]);
-    return { edition, wishes: wishes.data };
-  };
+  const load = (signal: AbortSignal) =>
+    loadWishResource(groupId, editionId, t("common.errors.notFound"), signal);
   const resource = useFocusResource(load);
   const fieldError =
-    localFieldError ?? normalizeApiError(mutationError).fields?.description;
-  const normalizedProductError = normalizeApiError(productSearchError);
+    state.localFieldError ??
+    normalizeApiError(state.mutationError).fields?.description;
+  const normalizedProductError = normalizeApiError(state.productSearch.error);
   const productSearchMessage =
-    productFieldError ??
+    state.productSearch.fieldError ??
     normalizedProductError.fields?.q ??
-    (productSearchError ? apiErrorMessage(productSearchError, t) : undefined);
-
-  function clearErrors(): void {
-    setLocalFieldError(undefined);
-    setMutationError(undefined);
-    setProductLinkError(undefined);
-  }
-
-  function resetProductSearch(): void {
-    setProductPickerTarget(undefined);
-    setProductQuery("");
-    setProductResults([]);
-    setProductSearching(false);
-    setProductSearched(false);
-    setProductSearchError(undefined);
-    setProductFieldError(undefined);
-  }
-
-  function beginProductSearch(target: ProductPickerTarget): void {
-    clearErrors();
-    setProductPickerTarget(target);
-    setProductQuery("");
-    setProductResults([]);
-    setProductSearched(false);
-    setProductSearchError(undefined);
-    setProductFieldError(undefined);
-  }
+    (state.productSearch.error
+      ? apiErrorMessage(state.productSearch.error, t)
+      : undefined);
 
   async function searchForProduct(): Promise<void> {
-    if (!groupId || !editionId || productSearching) return;
-    const query = productQuery.trim();
+    if (!groupId || !editionId || state.productSearch.searching) return;
+    const query = state.productSearch.query.trim();
 
     if (query.length < 2) {
-      setProductFieldError(t("products.queryRequired"));
+      dispatch({
+        type: "productSearchValidationFailed",
+        error: t("products.queryRequired"),
+      });
       return;
     }
 
-    setProductSearching(true);
-    setProductSearched(false);
-    setProductSearchError(undefined);
-    setProductFieldError(undefined);
+    dispatch({ type: "productSearchRequested" });
     try {
       const result = await searchProducts(groupId, editionId, {
         q: query,
         limit: 10,
       });
       if (!mounted.current) return;
-      setProductResults(result.data);
-      setProductSearched(true);
+      dispatch({ type: "productSearchSucceeded", results: result.data });
     } catch (exception) {
       if (!mounted.current) return;
-      setProductSearchError(exception);
+      dispatch({ type: "productSearchFailed", error: exception });
     }
-    if (mounted.current) setProductSearching(false);
   }
 
   function selectProduct(selected: Product): void {
-    if (productPickerTarget === "create") setProduct(selected);
-    else if (typeof productPickerTarget === "number")
-      setEditingProduct(selected);
-    resetProductSearch();
+    dispatch({ type: "productSelected", product: selected });
   }
 
   async function openProductLink(selected: Product): Promise<void> {
-    setProductLinkError(undefined);
+    dispatch({ type: "productLinkStarted" });
     const opened = await openProduct(selected);
-    if (mounted.current && !opened)
-      setProductLinkError(t("products.openError"));
-  }
-
-  function validate(value: string): string | undefined {
-    return value.trim() ? undefined : t("wishes.required");
+    if (mounted.current && !opened) {
+      dispatch({
+        type: "productLinkFailed",
+        error: t("products.openError"),
+      });
+    }
   }
 
   async function create(): Promise<void> {
-    if (!groupId || !editionId || mutation) return;
-    const value = description.trim();
-    const validationError = validate(value);
+    if (!groupId || !editionId || state.mutation) return;
+    const value = state.description.trim();
+    const validationError = value ? undefined : t("wishes.required");
     if (validationError) {
-      setLocalFieldError(validationError);
+      dispatch({ type: "validationFailed", error: validationError });
       return;
     }
 
-    clearErrors();
-    setMutation({ type: "create" });
+    dispatch({ type: "mutationStarted", mutation: { type: "create" } });
     try {
       const wish = await createWish(groupId, editionId, {
         description: value,
-        productId: product?.id ?? null,
+        productId: state.product?.id ?? null,
       });
       if (!mounted.current) return;
       resource.setData((current) =>
         current ? { ...current, wishes: [...current.wishes, wish] } : current,
       );
-      setDescription("");
-      setProduct(null);
-      resetProductSearch();
+      dispatch({ type: "createSucceeded" });
     } catch (exception) {
       if (!mounted.current) return;
-      setMutationError(exception);
+      dispatch({ type: "mutationFailed", error: exception });
       resource.refresh();
     }
-    if (mounted.current) setMutation(undefined);
   }
 
   function beginEdit(wish: Wish): void {
-    clearErrors();
-    setEditingId(wish.id);
-    setEditingDescription(wish.description);
-    setEditingProduct(wish.product);
-    resetProductSearch();
+    dispatch({ type: "editStarted", wish });
   }
 
   function cancelEdit(): void {
-    clearErrors();
-    setEditingId(undefined);
-    setEditingDescription("");
-    setEditingProduct(null);
-    resetProductSearch();
+    dispatch({ type: "editCancelled" });
   }
 
   async function saveEdit(wishId: number): Promise<void> {
-    if (!groupId || !editionId || mutation) return;
-    const value = editingDescription.trim();
-    const validationError = validate(value);
+    if (!groupId || !editionId || state.mutation) return;
+    const value = state.editingDescription.trim();
+    const validationError = value ? undefined : t("wishes.required");
     if (validationError) {
-      setLocalFieldError(validationError);
+      dispatch({ type: "validationFailed", error: validationError });
       return;
     }
 
-    clearErrors();
-    setMutation({ type: "update", wishId });
+    dispatch({
+      type: "mutationStarted",
+      mutation: { type: "update", wishId },
+    });
     try {
       const updated = await updateWish(groupId, editionId, wishId, {
         description: value,
-        productId: editingProduct?.id ?? null,
+        productId: state.editingProduct?.id ?? null,
       });
       if (!mounted.current) return;
       resource.setData((current) =>
@@ -222,16 +161,12 @@ export default function WishesScreen() {
             }
           : current,
       );
-      setEditingId(undefined);
-      setEditingDescription("");
-      setEditingProduct(null);
-      resetProductSearch();
+      dispatch({ type: "updateSucceeded" });
     } catch (exception) {
       if (!mounted.current) return;
-      setMutationError(exception);
+      dispatch({ type: "mutationFailed", error: exception });
       resource.refresh();
     }
-    if (mounted.current) setMutation(undefined);
   }
 
   function confirmDelete(wish: Wish): void {
@@ -246,9 +181,11 @@ export default function WishesScreen() {
   }
 
   async function remove(wishId: number): Promise<void> {
-    if (!groupId || !editionId || mutation) return;
-    clearErrors();
-    setMutation({ type: "delete", wishId });
+    if (!groupId || !editionId || state.mutation) return;
+    dispatch({
+      type: "mutationStarted",
+      mutation: { type: "delete", wishId },
+    });
     try {
       await deleteWish(groupId, editionId, wishId);
       if (!mounted.current) return;
@@ -260,33 +197,23 @@ export default function WishesScreen() {
             }
           : current,
       );
+      dispatch({ type: "mutationFinished" });
     } catch (exception) {
       if (!mounted.current) return;
-      setMutationError(exception);
+      dispatch({ type: "mutationFailed", error: exception });
       resource.refresh();
     }
-    if (mounted.current) setMutation(undefined);
   }
 
   async function move(wishId: number, offset: -1 | 1): Promise<void> {
-    if (!groupId || !editionId || mutation || !resource.data) return;
-    const index = resource.data.wishes.findIndex((wish) => wish.id === wishId);
-    const targetIndex = index + offset;
-    if (
-      index < 0 ||
-      targetIndex < 0 ||
-      targetIndex >= resource.data.wishes.length
-    )
-      return;
+    if (!groupId || !editionId || state.mutation || !resource.data) return;
+    const reordered = reorderWishList(resource.data.wishes, wishId, offset);
+    if (!reordered) return;
 
-    const reordered = [...resource.data.wishes];
-    const target = reordered[targetIndex];
-    if (!target) return;
-    reordered[targetIndex] = reordered[index]!;
-    reordered[index] = target;
-
-    clearErrors();
-    setMutation({ type: "reorder", wishId, offset });
+    dispatch({
+      type: "mutationStarted",
+      mutation: { type: "reorder", wishId, offset },
+    });
     try {
       const wishes = await reorderWishes(groupId, editionId, {
         wishIds: reordered.map((wish) => wish.id),
@@ -295,12 +222,12 @@ export default function WishesScreen() {
       resource.setData((current) =>
         current ? { ...current, wishes: wishes.data } : current,
       );
+      dispatch({ type: "mutationFinished" });
     } catch (exception) {
       if (!mounted.current) return;
-      setMutationError(exception);
+      dispatch({ type: "mutationFailed", error: exception });
       resource.refresh();
     }
-    if (mounted.current) setMutation(undefined);
   }
 
   if (!resource.data) {
@@ -322,7 +249,23 @@ export default function WishesScreen() {
   }
 
   const locked = resource.data.edition.status === "archived";
-  const controlsDisabled = Boolean(mutation) || editingId !== undefined;
+  const controlsDisabled =
+    Boolean(state.mutation) || state.editingId !== undefined;
+  const productSearchPanel = (
+    <ProductSearchPanel
+      query={state.productSearch.query}
+      results={state.productSearch.results}
+      searching={state.productSearch.searching}
+      searched={state.productSearch.searched}
+      error={productSearchMessage}
+      onQueryChange={(value) =>
+        dispatch({ type: "productQueryChanged", value })
+      }
+      onSearch={() => void searchForProduct()}
+      onSelect={selectProduct}
+      onCancel={() => dispatch({ type: "productSearchCancelled" })}
+    />
+  );
 
   return (
     <AppScreen
@@ -330,195 +273,75 @@ export default function WishesScreen() {
       subtitle={t("wishes.subtitle")}
       back
       refreshing={resource.isRefreshing}
-      onRefresh={mutation ? undefined : resource.refresh}
+      onRefresh={state.mutation ? undefined : resource.refresh}
     >
       {locked ? (
         <ArchivedEditionNotice />
       ) : (
-        <Card className="gap-3 p-5">
-          <FormField
-            label={t("wishes.field")}
-            placeholder={t("wishes.placeholder")}
-            value={description}
-            onChangeText={(value) => {
-              setDescription(value);
-              clearErrors();
-            }}
-            maxLength={500}
-            multiline
-            editable={!mutation}
-            error={editingId === undefined ? fieldError : undefined}
-          />
-          <Text variant="bodyBold">{t("products.optional")}</Text>
-          {product ? (
-            <View className="gap-3 rounded-tile border border-hairline p-3">
-              <ProductDetails product={product} />
-              <View className="flex-row flex-wrap gap-2">
-                <Button
-                  className="flex-1"
-                  label={t("products.change")}
-                  variant="light"
-                  size="sm"
-                  leftIcon={<Search color={palette.mintDeep} size={16} />}
-                  disabled={Boolean(mutation)}
-                  onPress={() => beginProductSearch("create")}
-                />
-                <Button
-                  label={t("products.open")}
-                  variant="light"
-                  size="sm"
-                  leftIcon={<ExternalLink color={palette.mintDeep} size={16} />}
-                  disabled={Boolean(mutation)}
-                  onPress={() => void openProductLink(product)}
-                />
-                <Button
-                  label={t("products.remove")}
-                  variant="light"
-                  size="sm"
-                  leftIcon={<X color={palette.pink} size={16} />}
-                  disabled={Boolean(mutation)}
-                  onPress={() => {
-                    setProduct(null);
-                    resetProductSearch();
-                  }}
-                />
-              </View>
-            </View>
-          ) : (
-            <Button
-              label={t("products.addOptional")}
-              variant="light"
-              size="sm"
-              leftIcon={<Search color={palette.mintDeep} size={16} />}
-              disabled={Boolean(mutation)}
-              onPress={() => beginProductSearch("create")}
-            />
-          )}
-          {productPickerTarget === "create" ? (
-            <ProductSearchPanel
-              query={productQuery}
-              results={productResults}
-              searching={productSearching}
-              searched={productSearched}
-              error={productSearchMessage}
-              onQueryChange={(value) => {
-                setProductQuery(value);
-                setProductFieldError(undefined);
-                setProductSearchError(undefined);
-              }}
-              onSearch={() => void searchForProduct()}
-              onSelect={selectProduct}
-              onCancel={resetProductSearch}
-            />
-          ) : null}
-          <Button
-            label={
-              mutation?.type === "create" ? t("wishes.adding") : t("wishes.add")
-            }
-            leftIcon={
-              mutation?.type === "create" ? (
-                <ActivityIndicator color={palette.white} />
-              ) : (
-                <Plus color={palette.white} size={18} />
-              )
-            }
-            disabled={Boolean(mutation) || editingId !== undefined}
-            onPress={() => void create()}
-          />
-        </Card>
-      )}
-
-      <Text variant="section">{t("wishes.listTitle")}</Text>
-
-      {resource.data.wishes.length === 0 ? (
-        <ScreenState
-          kind="empty"
-          title={t("wishes.empty")}
-          message={locked ? undefined : t("wishes.emptyHint")}
+        <CreateWishCard
+          description={state.description}
+          product={state.product}
+          fieldError={fieldError}
+          disabled={Boolean(state.mutation)}
+          creating={state.mutation?.type === "create"}
+          editing={state.editingId !== undefined}
+          productSearchPanel={
+            state.productSearch.target === "create"
+              ? productSearchPanel
+              : undefined
+          }
+          onDescriptionChange={(value) =>
+            dispatch({ type: "descriptionChanged", value })
+          }
+          onChooseProduct={() =>
+            dispatch({ type: "productSearchStarted", target: "create" })
+          }
+          onRemoveProduct={() => dispatch({ type: "productRemoved" })}
+          onOpenProduct={(selected) => void openProductLink(selected)}
+          onCreate={() => void create()}
         />
-      ) : (
-        <View className="gap-3">
-          {resource.data.wishes.map((wish, index) => (
-            <WishListItem
-              key={wish.id}
-              wish={wish}
-              index={index}
-              count={resource.data!.wishes.length}
-              locked={locked}
-              editing={editingId === wish.id}
-              editingDescription={editingDescription}
-              editingProduct={editingProduct}
-              productSearchPanel={
-                productPickerTarget === wish.id ? (
-                  <ProductSearchPanel
-                    query={productQuery}
-                    results={productResults}
-                    searching={productSearching}
-                    searched={productSearched}
-                    error={productSearchMessage}
-                    onQueryChange={(value) => {
-                      setProductQuery(value);
-                      setProductFieldError(undefined);
-                      setProductSearchError(undefined);
-                    }}
-                    onSearch={() => void searchForProduct()}
-                    onSelect={selectProduct}
-                    onCancel={resetProductSearch}
-                  />
-                ) : undefined
-              }
-              fieldError={fieldError}
-              controlsDisabled={controlsDisabled}
-              busy={busyState(mutation, wish.id)}
-              onEditingDescriptionChange={(value) => {
-                setEditingDescription(value);
-                clearErrors();
-              }}
-              onChooseProduct={() => beginProductSearch(wish.id)}
-              onRemoveEditingProduct={() => {
-                setEditingProduct(null);
-                resetProductSearch();
-              }}
-              onOpenProduct={(selected) => void openProductLink(selected)}
-              onBeginEdit={() => beginEdit(wish)}
-              onCancelEdit={cancelEdit}
-              onSaveEdit={() => void saveEdit(wish.id)}
-              onDelete={() => confirmDelete(wish)}
-              onMoveUp={() => void move(wish.id, -1)}
-              onMoveDown={() => void move(wish.id, 1)}
-            />
-          ))}
-        </View>
       )}
 
-      {mutationError ? (
-        <Text className="text-pink-deep" accessibilityRole="alert">
-          {apiErrorMessage(mutationError, t)}
-        </Text>
-      ) : null}
-      {productLinkError ? (
-        <Text className="text-pink-deep" accessibilityRole="alert">
-          {productLinkError}
-        </Text>
-      ) : null}
-      {resource.error ? (
-        <Text className="text-pink-deep" accessibilityRole="alert">
-          {apiErrorMessage(resource.error, t)}
-        </Text>
-      ) : null}
+      <WishListSection
+        wishes={resource.data.wishes}
+        state={state}
+        locked={locked}
+        fieldError={fieldError}
+        controlsDisabled={controlsDisabled}
+        productSearchPanel={productSearchPanel}
+        resourceError={resource.error}
+        onEditingDescriptionChange={(value) =>
+          dispatch({ type: "editingDescriptionChanged", value })
+        }
+        onChooseProduct={(wishId) =>
+          dispatch({ type: "productSearchStarted", target: wishId })
+        }
+        onRemoveEditingProduct={() =>
+          dispatch({ type: "editingProductRemoved" })
+        }
+        onOpenProduct={(selected) => void openProductLink(selected)}
+        onBeginEdit={beginEdit}
+        onCancelEdit={cancelEdit}
+        onSaveEdit={(wishId) => void saveEdit(wishId)}
+        onDelete={confirmDelete}
+        onMove={(wishId, offset) => void move(wishId, offset)}
+      />
     </AppScreen>
   );
 }
 
-function busyState(
-  mutation: Mutation | undefined,
-  wishId: number,
-): "up" | "down" | "update" | "delete" | undefined {
-  if (!mutation || !("wishId" in mutation) || mutation.wishId !== wishId)
-    return undefined;
-  if (mutation.type === "reorder")
-    return mutation.offset === -1 ? "up" : "down";
-  return mutation.type;
+async function loadWishResource(
+  groupId: number | undefined,
+  editionId: number | undefined,
+  notFoundMessage: string,
+  signal: AbortSignal,
+) {
+  if (!groupId || !editionId) throw new Error(notFoundMessage);
+  const [edition, wishes] = await Promise.all([
+    getEdition(groupId, editionId, { signal }),
+    getMyWishes(groupId, editionId, { signal }),
+  ]);
+  return { edition, wishes: wishes.data };
 }
 
 function ArchivedEditionNotice() {
