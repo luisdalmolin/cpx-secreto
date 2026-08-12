@@ -54,6 +54,9 @@ jobs:
           composer run openapi:generate
           git diff --exit-code -- openapi/v1.json
 
+      - name: Build backend assets
+        run: npm run build
+
       - name: Run backend checks
         run: composer run ci:check
 
