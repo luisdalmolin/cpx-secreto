@@ -8,9 +8,11 @@
     "scheme": "cpxsecreto",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.luisdalmolin.cpxsecreto"
     },
     "android": {
+      "package": "com.luisdalmolin.cpxsecreto",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,6 +45,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7a3e7d66-c4b5-44f3-a696-0104707b51d5"
+      }
+    },
+    "owner": "luisdalmolin"
   }
 }
